@@ -1,41 +1,40 @@
-# Softcents Number Portal (`number-portal.softcents.com`)
+# National Identity Verification Portal
 
-Production Node.js DID & Virtual Number Management Platform for Softcents Telecom Network, fully managed under **aaPanel** with isolated PostgreSQL database.
-
----
-
-## 🛠️ Tech Stack & Architecture
-
-- **Runtime:** Node.js (v26.x)
-- **Framework:** Express.js with Helmet security, Compression, CORS, Morgan logger
-- **Database:** PostgreSQL (Database: `noportal_sc`, Port: `5432`)
-- **Port:** `5000` (Isolated port to ensure 0% conflict with other VPS software)
-- **Web Server:** Nginx Reverse Proxy (aaPanel managed)
-- **Monitoring:** Integrated `/health` endpoint reporting database latency & memory
+> **Deployment & Setup Guide:** See [deploy/README.md](deploy/README.md) for full instructions on local development, production deployment (Systemd + PM2 + Nginx), environment variable specifications, and Central Identity Platform allowlist configuration.
 
 ---
 
-## 🚀 Quick Start & CLI Operations
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-### Install Dependencies
+## Getting Started
+
+First, run the development server:
+
 ```bash
-npm install
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-### Run Server Locally
-```bash
-npm start
-```
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-### Health Check
-```bash
-curl http://127.0.0.1:5000/health
-```
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
----
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-## 🛡️ Multi-Software VPS Safety
-This server hosts multiple live services. Always read [SERVER_GUIDELINES.md](./SERVER_GUIDELINES.md) before performing maintenance.
-- **NEVER** run `pkill -f node` or `killall node`.
-- Target **ONLY** port `5000` when restarting this application.
-- All operations are compatible with aaPanel Web UI under **Website > Node project**.
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deployment
+
+Refer to [deploy/README.md](deploy/README.md) for complete instructions for deploying both the Next.js frontend and the Python verification worker.

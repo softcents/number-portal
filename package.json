@@ -1,31 +1,42 @@
 {
-  "name": "number-portal",
-  "version": "1.0.0",
-  "description": "Softcents Number Portal Management Platform",
-  "main": "server.js",
+  "name": "nid-verification-app",
+  "version": "0.1.0",
+  "private": true,
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "db:migrate": "node -e 'require(\"./database\").initDatabase()'"
+    "dev": "concurrently -k -p \"[{name}]\" -n \"FRONTEND,BACKEND,PYTHON\" -c \"cyan,green,yellow\" \"npm run dev:frontend\" \"npm run dev:backend\" \"npm run dev:python\"",
+    "dev:frontend": "next dev",
+    "dev:backend": "npm run start:dev --prefix backend",
+    "dev:python": "python -m uvicorn main:app --app-dir verifier --reload --host 127.0.0.1 --port 8001",
+    "build": "npm run build:backend && next build",
+    "build:backend": "npm run build --prefix backend",
+    "build:web": "next build",
+    "start": "concurrently -n \"API,WEB\" -c \"cyan,blue\" \"npm run start:prod --prefix backend\" \"PORT=3001 next start\"",
+    "start:api": "npm run start:prod --prefix backend",
+    "start:web": "PORT=3001 next start",
+    "lint": "eslint",
+    "db:seed": "prisma db seed"
   },
-  "keywords": [
-    "number-portal",
-    "telecom",
-    "did-management",
-    "softcents",
-    "aapanel",
-    "nodejs",
-    "postgresql"
-  ],
-  "author": "Softcents <admin@softcents.com>",
-  "license": "ISC",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "dependencies": {
-    "compression": "^1.8.0",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "helmet": "^8.0.0",
-    "morgan": "^1.10.0",
-    "pg": "^8.13.3"
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "next": "16.3.8",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^10.0.5",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.8",
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
   }
 }

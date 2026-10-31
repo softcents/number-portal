@@ -1,0 +1,460 @@
+// Prisma schema for PostgreSQL
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Existing: Admin auth ──────────────────────────────────────────────────
+model Admin {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("admins")
+}
+
+// ─── Existing: Verification audit ─────────────────────────────────────────
+model VerificationSearch {
+  id                  String   @id @default(cuid())
+  jobId               String?  @unique
+  nid                 String
+  dob                 String
+  status              String   @default("PENDING")
+  matchFound          Boolean  @default(false)
+  redirectedToCentral Boolean  @default(false)
+  ipAddress           String?
+  matchedProfile      Json?
+  filledFields        Json?
+  photoUrl            String?
+  documentUrl         String?
+  documentBackUrl     String?
+  errorMessage        String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  submissions IccSubmission[]
+
+  @@index([nid])
+  @@index([status])
+  @@index([createdAt])
+  @@map("verification_searches")
+}
+
+model IccSubmission {
+  id               String              @id @default(cuid())
+  submitJobId      String?             @unique
+  searchId         String?
+  search           VerificationSearch? @relation(fields: [searchId], references: [id], onDelete: SetNull)
+  status           String              @default("SUBMITTING")
+  stage            String?
+  subscriberName   String?
+  nationalIdNumber String?
+  phoneNumber      String?
+  connection       String?
+  subscriberType   String?
+  allFormFields    Json?
+  userFilledFields Json?
+  hasPhoto         Boolean             @default(false)
+  hasDocument      Boolean             @default(false)
+  hasDocumentBack  Boolean             @default(false)
+  photoData        String?
+  documentData     String?
+  documentBackData String?
+  durationMs       Int?
+  failureReason    String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([nationalIdNumber])
+  @@index([status])
+  @@index([createdAt])
+  @@map("icc_submissions")
+}
+
+// ─── NUMBER SALE: Provider Management ─────────────────────────────────────
+model Provider {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  loginUrl  String?
+  rechargeLoginUrl String?
+  isActive  Boolean  @default(true)
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  numbers    Number[]
+  credential ProviderCredential?
+
+  @@map("providers")
+}
+
+model ProviderCredential {
+  id                String   @id @default(cuid())
+  providerId        String   @unique
+  provider          Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  username          String
+  encryptedPassword String
+  rechargeUsername  String?
+  rechargeEncryptedPassword String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("provider_credentials")
+}
+
+// ─── NUMBER SALE: Display Company ─────────────────────────────────────────
+model DisplayCompany {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  numbers Number[]
+
+  @@map("display_companies")
+}
+
+// ─── NUMBER SALE: Customer ─────────────────────────────────────────────────
+model Customer {
+  id                    String    @id @default(cuid())
+  centralIdentityUserId String    @unique
+  fullName              String
+  email                 String
+  phoneNumber           String?
+  nidHash               String?
+  customerType          String    @default("INDIVIDUAL")
+  companyName           String?
+  companyPosition       String?
+  kycVerifiedAt         DateTime?
+  isActive              Boolean   @default(true)
+  notes                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  numbers Number[]
+  orders  Order[]
+  wallets NumberWallet[]
+  rechargeTransactions RechargeTransaction[]
+
+  @@index([centralIdentityUserId])
+  @@index([email])
+  @@map("customers")
+}
+
+// ─── NUMBER SALE: Number Inventory ────────────────────────────────────────
+model Number {
+  id                   String         @id @default(cuid())
+  number               String         @unique
+  normalizedNumber     String         @unique
+  country              String         @default("BD")
+  countryCode          String         @default("+880")
+  city                 String?
+  area                 String?
+  numberType           String         @default("MOBILE")
+  callRate             Decimal?       @db.Decimal(10, 4)
+  costPrice            Decimal?       @db.Decimal(10, 2)
+  salePrice            Decimal?       @db.Decimal(10, 2)
+  providerId           String?
+  provider             Provider?      @relation(fields: [providerId], references: [id])
+  providerReferenceId  String?
+  displayCompanyId     String?
+  displayCompany       DisplayCompany? @relation(fields: [displayCompanyId], references: [id])
+  status               String         @default("AVAILABLE")
+  activationStatus     String?
+  customerId           String?
+  customer             Customer?      @relation(fields: [customerId], references: [id])
+  reservedAt           DateTime?
+  reservationExpiresAt DateTime?
+  reservedBy           String?
+  notes                String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+
+  statusHistory        NumberStatusHistory[]
+  wallet               NumberWallet?
+  orderItems           OrderItem[]
+  rechargeTransactions RechargeTransaction[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([providerId])
+  @@map("numbers")
+}
+
+model NumberStatusHistory {
+  id         String   @id @default(cuid())
+  numberId   String
+  number     Number   @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  fromStatus String?
+  toStatus   String
+  changedBy  String
+  reason     String?
+  source     String   @default("system")
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  @@index([numberId])
+  @@map("number_status_history")
+}
+
+// ─── NUMBER SALE: Number Wallet ────────────────────────────────────────────
+model NumberWallet {
+  id         String   @id @default(cuid())
+  numberId   String   @unique
+  number     Number   @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  balance    Decimal  @default(0) @db.Decimal(12, 2)
+  currency   String   @default("BDT")
+  status     String   @default("PENDING")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  transactions NumberWalletTransaction[]
+
+  @@index([customerId])
+  @@map("number_wallets")
+}
+
+model NumberWalletTransaction {
+  id              String       @id @default(cuid())
+  walletId        String
+  wallet          NumberWallet @relation(fields: [walletId], references: [id])
+  numberId        String
+  customerId      String
+  transactionType String
+  amount          Decimal      @db.Decimal(12, 2)
+  balanceBefore   Decimal      @db.Decimal(12, 2)
+  balanceAfter    Decimal      @db.Decimal(12, 2)
+  reference       String?
+  paymentId       String?
+  status          String       @default("COMPLETED")
+  notes           String?
+  createdAt       DateTime     @default(now())
+
+  @@index([walletId])
+  @@index([numberId])
+  @@map("number_wallet_transactions")
+}
+
+// ─── NUMBER SALE: Orders ───────────────────────────────────────────────────
+model Order {
+  id          String    @id @default(cuid())
+  orderNumber String    @unique
+  customerId  String
+  customer    Customer  @relation(fields: [customerId], references: [id])
+  status      String    @default("DRAFT")
+  totalAmount Decimal   @db.Decimal(12, 2)
+  currency    String    @default("BDT")
+  notes       String?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  items         OrderItem[]
+  payments      Payment[]
+  statusHistory OrderStatusHistory[]
+
+  @@index([customerId])
+  @@index([status])
+  @@map("orders")
+}
+
+model OrderItem {
+  id            String   @id @default(cuid())
+  orderId       String
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  numberId      String
+  number        Number   @relation(fields: [numberId], references: [id])
+  salePrice     Decimal  @db.Decimal(12, 2)
+  status        String   @default("PENDING")
+  activatedAt   DateTime?
+  failureReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([orderId])
+  @@index([numberId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus String?
+  toStatus   String
+  changedBy  String
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  @@index([orderId])
+  @@map("order_status_history")
+}
+
+// ─── NUMBER SALE: Payments ────────────────────────────────────────────────
+model Payment {
+  id                   String    @id @default(cuid())
+  customerId           String
+  orderId              String?
+  order                Order?    @relation(fields: [orderId], references: [id])
+  rechargeOrderId      String?
+  numberId             String?
+  walletId             String?
+  gateway              String    @default("PIPRAPAY")
+  gatewayPaymentId     String?
+  gatewayTransactionId String?
+  amount               Decimal   @db.Decimal(12, 2)
+  currency             String    @default("BDT")
+  status               String    @default("PENDING")
+  verificationStatus   String    @default("UNVERIFIED")
+  verifiedAt           DateTime?
+  paidAt               DateTime?
+  failedAt             DateTime?
+  refundedAt           DateTime?
+  rawResponse          Json?
+  idempotencyKey       String?   @unique
+  notes                String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  auditLogs PaymentAuditLog[]
+
+  @@index([customerId])
+  @@index([orderId])
+  @@index([status])
+  @@map("payments")
+}
+
+model PaymentAuditLog {
+  id        String   @id @default(cuid())
+  paymentId String
+  payment   Payment  @relation(fields: [paymentId], references: [id])
+  oldStatus String?
+  newStatus String
+  oldAmount Decimal? @db.Decimal(12, 2)
+  newAmount Decimal? @db.Decimal(12, 2)
+  action    String
+  reason    String?
+  adminId   String?
+  ipAddress String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([paymentId])
+  @@map("payment_audit_logs")
+}
+
+model RechargeOrder {
+  id             String   @id @default(cuid())
+  customerId     String
+  numberId       String
+  walletId       String?
+  amount         Decimal  @db.Decimal(12, 2)
+  currency       String   @default("BDT")
+  status         String   @default("PENDING")
+  paymentId      String?
+  idempotencyKey String?  @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([customerId])
+  @@index([numberId])
+  @@map("recharge_orders")
+}
+
+// ─── NUMBER SALE: Bulk Import ─────────────────────────────────────────────
+model NumberImport {
+  id            String   @id @default(cuid())
+  filename      String
+  totalRows     Int      @default(0)
+  validRows     Int      @default(0)
+  duplicateRows Int      @default(0)
+  invalidRows   Int      @default(0)
+  importedRows  Int      @default(0)
+  status        String   @default("PENDING")
+  importedBy    String
+  errorLog      Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  rows NumberImportRow[]
+
+  @@map("number_imports")
+}
+
+model NumberImportRow {
+  id               String       @id @default(cuid())
+  importId         String
+  import           NumberImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  rowNumber        Int
+  rawData          Json
+  normalizedNumber String?
+  status           String       @default("PENDING")
+  errorMessage     String?
+  numberId         String?
+  createdAt        DateTime     @default(now())
+
+  @@index([importId])
+  @@map("number_import_rows")
+}
+
+// ─── NUMBER SALE: System Audit ────────────────────────────────────────────
+model SystemAuditLog {
+  id         String   @id @default(cuid())
+  actorType  String
+  actorId    String
+  action     String
+  resource   String
+  resourceId String?
+  oldValue   Json?
+  newValue   Json?
+  reason     String?
+  source     String   @default("system")
+  ipAddress  String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([resource])
+  @@index([createdAt])
+  @@map("system_audit_logs")
+}
+
+// ─── NUMBER SALE: Recharge Transactions ────────────────────────────────────
+model RechargeTransaction {
+  id             String    @id @default(cuid())
+  userId         String
+  numberId       String
+  phone          String
+  amount         Decimal   @db.Decimal(12, 2)
+  status         String    @default("PENDING") // PENDING | DONE | ERROR | UNCERTAIN
+  reason         String?
+  balanceBefore  Decimal?  @db.Decimal(12, 2)
+  balanceAfter   Decimal?  @db.Decimal(12, 2)
+  idempotencyKey String?   @unique
+  jobId          String?   @unique
+  durationMs     Int?
+  reference      String?
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  number   Number    @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([numberId])
+  @@index([phone])
+  @@index([status])
+  @@index([createdAt])
+  @@map("recharge_transactions")
+}

@@ -18,7 +18,8 @@
 
 | Software / Project | Tech Stack | Port(s) | Directory Path | Isolation Rule |
 |---|---|---|---|---|
-| **Number Portal** | Node.js (Express) | `5000` | `/www/wwwroot/number-portal.softcents.com` | **শুধু এই পোর্টের প্রসেস রিস্টার্ট হবে** |
+| **Number Portal (API)** | NestJS 10 | `5000` | `/www/wwwroot/number-portal.softcents.com/backend` | **শুধু এই পোর্টের প্রসেস রিস্টার্ট হবে** |
+| **Number Portal (Web)** | Next.js 16 | `3001` | `/www/wwwroot/number-portal.softcents.com` | **শুধু এই পোর্টের প্রসেস রিস্টার্ট হবে** |
 | **Central Account Web** | Next.js 14 | `3000` | `/www/wwwroot/account.softcents.com/apps/web` | **🚫 কোনোভাবেই স্পর্শ করা যাবে না** |
 | **Central Account API** | NestJS | `4000` | `/www/wwwroot/account.softcents.com/apps/api` | **🚫 কোনোভাবেই স্পর্শ করা যাবে না** |
 | **SMS Agri Orchestrator** | Go Binary | `8080` | `/www/wwwroot/smsagri.softcents.com` | **🚫 কোনোভাবেই স্পর্শ করা যাবে না** |
@@ -54,12 +55,12 @@
 
 ### খ. কমান্ড লাইন / টার্মিনাল থেকে নিরাপদ রিস্টার্ট:
 ```bash
-# শুধুমাত্র পোর্ট ৫০০০ বন্ধ করা (অন্য কোনো সফটওয়্যার আক্রান্ত হবে না):
-fuser -k 5000/tcp
+# শুধুমাত্র পোর্ট ৩০০০ ও ৫০০০ বাদে পোর্ট ৩০০১ ও ৫০০০ বন্ধ করা:
+fuser -k 3001/tcp 5000/tcp
 
 # ব্যাকগ্রাউন্ডে Node প্রজেক্ট চালু করা:
 cd /www/wwwroot/number-portal.softcents.com
-nohup node server.js >> /www/wwwlogs/nodejs/number-portal.softcents.com.log 2>&1 &
+nohup /www/server/nodejs/v26.13.0/bin/npm run start >> /www/wwwlogs/nodejs/number-portal.softcents.com.log 2>&1 &
 ```
 
 ---
@@ -67,16 +68,8 @@ nohup node server.js >> /www/wwwlogs/nodejs/number-portal.softcents.com.log 2>&1
 ## 🔄 ৪. গিট আপডেট ও সিঙ্ক নিয়ম (Git Workflow)
 
 ```bash
-# ১. গিট থেকে পরিবর্তন নামানো
 cd /www/wwwroot/number-portal.softcents.com
-git pull origin main
-
-# ২. ডিপেন্ডেন্সি আপডেট
-npm install
-
-# ৩. নিরাপদ রিস্টার্ট
-fuser -k 5000/tcp
-nohup node server.js >> /www/wwwlogs/nodejs/number-portal.softcents.com.log 2>&1 &
+./scripts/git-push.sh "আপনার আপডেট নোট"
 ```
 
 ---
