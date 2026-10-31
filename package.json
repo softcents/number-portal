@@ -1,0 +1,31 @@
+{
+  "name": "number-portal",
+  "version": "1.0.0",
+  "description": "Softcents Number Portal Management Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "db:migrate": "node -e 'require(\"./database\").initDatabase()'"
+  },
+  "keywords": [
+    "number-portal",
+    "telecom",
+    "did-management",
+    "softcents",
+    "aapanel",
+    "nodejs",
+    "postgresql"
+  ],
+  "author": "Softcents <admin@softcents.com>",
+  "license": "ISC",
+  "dependencies": {
+    "compression": "^1.8.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "helmet": "^8.0.0",
+    "morgan": "^1.10.0",
+    "pg": "^8.13.3"
+  }
+}

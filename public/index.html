@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Number Portal | Softcents Telecom Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+            <i class="fa-solid fa-phone-volume text-lg"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xl font-bold tracking-tight text-slate-900">Softcents</span>
+              <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">Number Portal</span>
+            </div>
+            <p class="text-xs text-slate-500">DID & Virtual Number Orchestration</p>
+          </div>
+        </div>
+
+        <!-- System & DB Health Indicator -->
+        <div class="flex items-center space-x-4">
+          <div id="db-health-badge" class="flex items-center space-x-2 text-xs px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="font-medium" id="db-health-text">PostgreSQL: Connecting...</span>
+          </div>
+          <div class="hidden sm:flex items-center text-xs text-slate-500 bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200">
+            <i class="fa-solid fa-server mr-1.5 text-slate-400"></i>
+            <span>aaPanel Managed (Port 5000)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-6">
+
+    <!-- Overview Stats Cards -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Numbers</p>
+          <h3 id="stat-total" class="text-2xl font-bold text-slate-900 mt-1">--</h3>
+          <span class="text-xs text-slate-500 mt-1 inline-block">Active inventory</span>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-hashtag"></i>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Assigned / Active</p>
+          <h3 id="stat-active" class="text-2xl font-bold text-emerald-600 mt-1">--</h3>
+          <span class="text-xs text-emerald-600 mt-1 inline-block"><i class="fa-solid fa-check-circle mr-1"></i>Routing active</span>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-phone"></i>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Available Pools</p>
+          <h3 id="stat-available" class="text-2xl font-bold text-amber-600 mt-1">--</h3>
+          <span class="text-xs text-amber-600 mt-1 inline-block"><i class="fa-solid fa-clock mr-1"></i>Ready to assign</span>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-layer-group"></i>
+        </div>
+      </div>
+
+      <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+        <div>
+          <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total Calls Processed</p>
+          <h3 id="stat-calls" class="text-2xl font-bold text-indigo-600 mt-1">--</h3>
+          <span class="text-xs text-slate-500 mt-1 inline-block">Realtime CDR logs</span>
+        </div>
+        <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
+          <i class="fa-solid fa-chart-line"></i>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab Bar & Action Controls -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200 pb-4">
+      <div class="flex space-x-2">
+        <button onclick="switchTab('inventory')" id="tab-btn-inventory" class="px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm transition">
+          <i class="fa-solid fa-list mr-1.5"></i>Number Inventory
+        </button>
+        <button onclick="switchTab('pools')" id="tab-btn-pools" class="px-4 py-2 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-diagram-project mr-1.5"></i>Number Pools
+        </button>
+        <button onclick="switchTab('logs')" id="tab-btn-logs" class="px-4 py-2 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-clock-rotate-left mr-1.5"></i>Call Records (CDR)
+        </button>
+        <button onclick="switchTab('guidelines')" id="tab-btn-guidelines" class="px-4 py-2 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition">
+          <i class="fa-solid fa-shield-halved mr-1.5"></i>VPS Guidelines
+        </button>
+      </div>
+
+      <div class="flex items-center space-x-3">
+        <button onclick="openAddModal()" class="px-4 py-2 text-sm font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center space-x-1.5 transition">
+          <i class="fa-solid fa-plus"></i>
+          <span>Add DID Number</span>
+        </button>
+        <button onclick="loadData()" class="p-2 text-slate-500 hover:text-slate-800 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition" title="Refresh">
+          <i class="fa-solid fa-arrows-rotate"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- TAB 1: Inventory Table -->
+    <div id="tab-inventory" class="tab-pane space-y-4">
+      <!-- Search & Filters -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <div class="relative w-full sm:w-80">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+          <input type="text" id="search-input" onkeyup="filterNumbers()" placeholder="Search phone number, country, customer..." class="w-full pl-10 pr-4 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500">
+        </div>
+        <div class="flex items-center space-x-3 w-full sm:w-auto">
+          <select id="filter-status" onchange="filterNumbers()" class="w-full sm:w-auto text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="available">Available</option>
+            <option value="reserved">Reserved</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Numbers Table -->
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-600">
+            <thead class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200">
+              <tr>
+                <th class="px-6 py-3.5">Phone Number</th>
+                <th class="px-6 py-3.5">Country / Type</th>
+                <th class="px-6 py-3.5">Pool</th>
+                <th class="px-6 py-3.5">Routing Target</th>
+                <th class="px-6 py-3.5">Assigned Customer</th>
+                <th class="px-6 py-3.5">Status</th>
+                <th class="px-6 py-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="numbers-tbody" class="divide-y divide-slate-100">
+              <tr>
+                <td colspan="7" class="px-6 py-8 text-center text-slate-400">Loading numbers inventory...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Number Pools -->
+    <div id="tab-pools" class="tab-pane hidden space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="pools-grid">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+
+    <!-- TAB 3: Call Logs -->
+    <div id="tab-logs" class="tab-pane hidden space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-600">
+            <thead class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200">
+              <tr>
+                <th class="px-6 py-3.5">Call ID</th>
+                <th class="px-6 py-3.5">Caller ID</th>
+                <th class="px-6 py-3.5">Destination</th>
+                <th class="px-6 py-3.5">Duration</th>
+                <th class="px-6 py-3.5">Disposition</th>
+                <th class="px-6 py-3.5">Cost</th>
+                <th class="px-6 py-3.5">Timestamp</th>
+              </tr>
+            </thead>
+            <tbody id="logs-tbody" class="divide-y divide-slate-100">
+              <tr>
+                <td colspan="7" class="px-6 py-8 text-center text-slate-400">Loading call records...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: VPS Guidelines & Safety Notes -->
+    <div id="tab-guidelines" class="tab-pane hidden space-y-4">
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex items-center space-x-3 text-amber-600 border-b border-slate-100 pb-3">
+          <i class="fa-solid fa-triangle-exclamation text-2xl"></i>
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Multi-Software VPS Safety & Operation Guidelines</h3>
+            <p class="text-xs text-slate-500">Strict rules to prevent downtime across other running services on this server</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-slate-700">
+          <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
+            <h4 class="font-bold text-slate-900 flex items-center"><i class="fa-solid fa-server mr-2 text-blue-600"></i>Active Software & Port Isolation</h4>
+            <ul class="space-y-1 list-disc list-inside text-slate-600">
+              <li><strong>number-portal.softcents.com:</strong> Node.js on Port <code>5000</code></li>
+              <li><strong>account.softcents.com:</strong> Next.js & NestJS on Ports <code>3000</code> & <code>4000</code></li>
+              <li><strong>smsagri.softcents.com:</strong> Go Microservices on Ports <code>8080-8083</code></li>
+              <li><strong>PostgreSQL:</strong> Port <code>5432</code> (Dedicated DB: <code>noportal_sc</code>)</li>
+            </ul>
+          </div>
+
+          <div class="bg-red-50 p-4 rounded-xl border border-red-200 space-y-2 text-red-800">
+            <h4 class="font-bold flex items-center"><i class="fa-solid fa-ban mr-2 text-red-600"></i>Strict Restrictions</h4>
+            <ul class="space-y-1 list-disc list-inside">
+              <li><strong>NEVER run <code>pkill -f node</code>:</strong> It will crash Central Account.</li>
+              <li><strong>NEVER reboot VPS:</strong> It takes down all live production software.</li>
+              <li><strong>SAFE RESTART:</strong> Use <code>fuser -k 5000/tcp</code> or aaPanel Restart button.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Add Number Modal -->
+  <div id="add-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-lg w-full p-6 space-y-4">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+        <h3 class="font-bold text-slate-900 text-lg">Add New DID Number</h3>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <form id="add-number-form" onsubmit="submitAddNumber(event)" class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Phone Number (E.164 format)</label>
+          <input type="text" id="add-phone" required placeholder="+12025550199" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Country</label>
+            <input type="text" id="add-country" value="United States" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Type</label>
+            <select id="add-type" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+              <option value="DID">DID</option>
+              <option value="TollFree">Toll-Free</option>
+              <option value="Mobile">Mobile</option>
+              <option value="Geographic">Geographic</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Routing Destination</label>
+          <input type="text" id="add-routing" value="sip:trunk@pbx.softcents.com:5060" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Assign to Customer (Optional)</label>
+          <input type="text" id="add-customer" placeholder="e.g. Acme Corp" class="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none">
+        </div>
+
+        <div class="flex justify-end space-x-2 pt-2 border-t border-slate-100">
+          <button type="button" onclick="closeAddModal()" class="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-semibold shadow-sm">Save Number</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500">
+    Softcents Number Portal Platform &copy; 2026 Softcents Telecom Ltd. Managed via aaPanel VPS Environment.
+  </footer>
+
+  <script>
+    let allNumbers = [];
+
+    async function checkHealth() {
+      try {
+        const res = await fetch('/health');
+        const data = await res.json();
+        const badge = document.getElementById('db-health-badge');
+        const text = document.getElementById('db-health-text');
+        if (data.database && data.database.status === 'connected') {
+          badge.className = "flex items-center space-x-2 text-xs px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200";
+          text.innerHTML = `PostgreSQL: Connected (${data.database.latency_ms}ms)`;
+        } else {
+          badge.className = "flex items-center space-x-2 text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-700 border border-red-200";
+          text.innerHTML = `PostgreSQL: Disconnected`;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function loadData() {
+      await checkHealth();
+
+      // Load Stats
+      try {
+        const res = await fetch('/api/overview');
+        const json = await res.json();
+        if (json.success) {
+          document.getElementById('stat-total').innerText = json.stats.total_numbers;
+          document.getElementById('stat-active').innerText = json.stats.active_numbers;
+          document.getElementById('stat-available').innerText = json.stats.available_numbers;
+          document.getElementById('stat-calls').innerText = json.stats.total_calls;
+        }
+      } catch (e) { console.error(e); }
+
+      // Load Numbers
+      try {
+        const res = await fetch('/api/numbers');
+        const json = await res.json();
+        if (json.success) {
+          allNumbers = json.data;
+          renderNumbers(allNumbers);
+        }
+      } catch (e) { console.error(e); }
+
+      // Load Pools
+      try {
+        const res = await fetch('/api/pools');
+        const json = await res.json();
+        if (json.success) renderPools(json.data);
+      } catch (e) { console.error(e); }
+
+      // Load Logs
+      try {
+        const res = await fetch('/api/call-logs');
+        const json = await res.json();
+        if (json.success) renderLogs(json.data);
+      } catch (e) { console.error(e); }
+    }
+
+    function renderNumbers(list) {
+      const tbody = document.getElementById('numbers-tbody');
+      if (!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-slate-400">No numbers found matching criteria.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = list.map(n => `
+        <tr class="hover:bg-slate-50/70 transition">
+          <td class="px-6 py-4 font-mono font-bold text-slate-900">${n.phone_number}</td>
+          <td class="px-6 py-4">
+            <div class="font-medium text-slate-800">${n.country_name} (${n.country_code})</div>
+            <span class="text-xs text-slate-400">${n.number_type}</span>
+          </td>
+          <td class="px-6 py-4 text-xs font-medium text-slate-600">${n.pool_name || 'Unassigned'}</td>
+          <td class="px-6 py-4 font-mono text-xs text-blue-600 truncate max-w-xs" title="${n.routing_destination}">${n.routing_destination}</td>
+          <td class="px-6 py-4 text-xs">
+            ${n.assigned_customer ? `<span class="font-semibold text-slate-800">${n.assigned_customer}</span>` : '<span class="text-slate-400">Unassigned</span>'}
+          </td>
+          <td class="px-6 py-4">
+            <span class="px-2.5 py-1 text-xs font-semibold rounded-full ${n.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+              ${n.status}
+            </span>
+          </td>
+          <td class="px-6 py-4 text-right space-x-2">
+            <button onclick="deleteNumber(${n.id})" class="text-slate-400 hover:text-red-600 transition" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    function renderPools(pools) {
+      const grid = document.getElementById('pools-grid');
+      grid.innerHTML = pools.map(p => `
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div class="flex justify-between items-start">
+            <h4 class="font-bold text-slate-900">${p.pool_name}</h4>
+            <span class="text-xs font-bold px-2 py-1 bg-blue-50 text-blue-700 rounded-lg">${p.number_count || 0} DIDs</span>
+          </div>
+          <p class="text-xs text-slate-500">${p.description || 'No description'}</p>
+          <div class="text-xs text-slate-400 flex items-center">
+            <i class="fa-solid fa-tower-broadcast mr-1.5 text-slate-400"></i>Carrier: ${p.carrier}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderLogs(logs) {
+      const tbody = document.getElementById('logs-tbody');
+      tbody.innerHTML = logs.map(l => `
+        <tr class="hover:bg-slate-50/70 transition">
+          <td class="px-6 py-3 font-mono text-xs text-slate-500">${l.call_id || l.id}</td>
+          <td class="px-6 py-3 font-mono text-xs font-bold text-slate-900">${l.caller_id}</td>
+          <td class="px-6 py-3 font-mono text-xs text-blue-600">${l.destination_number}</td>
+          <td class="px-6 py-3 text-xs">${l.duration_sec}s</td>
+          <td class="px-6 py-3 text-xs"><span class="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-semibold">${l.disposition}</span></td>
+          <td class="px-6 py-3 font-mono text-xs text-slate-600">$${parseFloat(l.cost).toFixed(4)}</td>
+          <td class="px-6 py-3 text-xs text-slate-400">${new Date(l.call_time).toLocaleString()}</td>
+        </tr>
+      `).join('');
+    }
+
+    function filterNumbers() {
+      const search = document.getElementById('search-input').value.toLowerCase();
+      const status = document.getElementById('filter-status').value;
+      const filtered = allNumbers.filter(n => {
+        const matchSearch = !search || n.phone_number.toLowerCase().includes(search) || (n.country_name && n.country_name.toLowerCase().includes(search)) || (n.assigned_customer && n.assigned_customer.toLowerCase().includes(search));
+        const matchStatus = !status || n.status === status;
+        return matchSearch && matchStatus;
+      });
+      renderNumbers(filtered);
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+      document.getElementById('tab-' + tab).classList.remove('hidden');
+
+      ['inventory', 'pools', 'logs', 'guidelines'].forEach(t => {
+        const btn = document.getElementById('tab-btn-' + t);
+        if (t === tab) {
+          btn.className = "px-4 py-2 text-sm font-semibold rounded-lg bg-blue-600 text-white shadow-sm transition";
+        } else {
+          btn.className = "px-4 py-2 text-sm font-medium rounded-lg text-slate-600 hover:bg-slate-100 transition";
+        }
+      });
+    }
+
+    function openAddModal() { document.getElementById('add-modal').classList.remove('hidden'); }
+    function closeAddModal() { document.getElementById('add-modal').classList.add('hidden'); }
+
+    async function submitAddNumber(e) {
+      e.preventDefault();
+      const payload = {
+        phone_number: document.getElementById('add-phone').value,
+        country_name: document.getElementById('add-country').value,
+        number_type: document.getElementById('add-type').value,
+        routing_destination: document.getElementById('add-routing').value,
+        assigned_customer: document.getElementById('add-customer').value || null,
+        status: document.getElementById('add-customer').value ? 'active' : 'available'
+      };
+      try {
+        const res = await fetch('/api/numbers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+          closeAddModal();
+          loadData();
+        } else {
+          alert('Error: ' + data.error);
+        }
+      } catch (err) {
+        alert('Failed to save number: ' + err.message);
+      }
+    }
+
+    async function deleteNumber(id) {
+      if (!confirm('Are you sure you want to delete this DID number?')) return;
+      try {
+        const res = await fetch('/api/numbers/' + id, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) loadData();
+      } catch (err) {
+        alert('Failed to delete number');
+      }
+    }
+
+    // Initialize on page load
+    loadData();
+    setInterval(checkHealth, 15000);
+  </script>
+</body>
+</html>
