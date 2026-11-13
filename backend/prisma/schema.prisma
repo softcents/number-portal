@@ -135,6 +135,7 @@ model Customer {
   companyName           String?
   companyPosition       String?
   password              String?
+  balance               Decimal   @default(0) @db.Decimal(12, 2)
   resellerId            String?
   reseller              Reseller? @relation(fields: [resellerId], references: [id], onDelete: SetNull)
   kycVerifiedAt         DateTime?
@@ -147,6 +148,7 @@ model Customer {
   orders  Order[]
   wallets NumberWallet[]
   rechargeTransactions RechargeTransaction[]
+  balanceTransactions  CustomerBalanceTransaction[]
 
   @@index([centralIdentityUserId])
   @@index([email])
@@ -318,6 +320,9 @@ model Payment {
   rechargeOrderId      String?
   numberId             String?
   walletId             String?
+  resellerId           String?
+  reseller             Reseller? @relation(fields: [resellerId], references: [id], onDelete: SetNull)
+  paymentType          String    @default("ORDER") // ORDER | WALLET_DEPOSIT | RECHARGE
   gateway              String    @default("PIPRAPAY")
   gatewayPaymentId     String?
   gatewayTransactionId String?
@@ -339,6 +344,8 @@ model Payment {
 
   @@index([customerId])
   @@index([orderId])
+  @@index([resellerId])
+  @@index([paymentType])
   @@index([status])
   @@map("payments")
 }
@@ -492,13 +499,27 @@ model Reseller {
   rechargeDiscountPercent Decimal   @default(0) @db.Decimal(5, 2)
   status                  String    @default("ACTIVE")
   notes                   String?
+
+  // Personal Payment Gateway Configuration
+  pgType                     String    @default("PIPRAPAY") // PIPRAPAY
+  pgApiKey                   String?
+  pgSecretKey                String?
+  pgBaseUrl                  String?   @default("https://epay.softcents.com/api")
+  pgIsActive                 Boolean   @default(false)
+  manualPaymentInstructions  String?
+  manualBkashNumber          String?
+  manualNagadNumber          String?
+  manualRocketNumber         String?
+
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
-  customers            Customer[]
-  numbers              Number[]
-  transactions         ResellerTransaction[]
-  rechargeTransactions RechargeTransaction[]
+  customers                   Customer[]
+  numbers                     Number[]
+  transactions                ResellerTransaction[]
+  rechargeTransactions        RechargeTransaction[]
+  payments                    Payment[]
+  customerBalanceTransactions CustomerBalanceTransaction[]
 
   @@index([status])
   @@index([subdomain])
@@ -524,4 +545,25 @@ model ResellerTransaction {
   @@index([type])
   @@index([createdAt])
   @@map("reseller_transactions")
+}
+
+model CustomerBalanceTransaction {
+  id             String    @id @default(cuid())
+  customerId     String
+  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  resellerId     String?
+  reseller       Reseller? @relation(fields: [resellerId], references: [id], onDelete: SetNull)
+  type           String    // DEPOSIT | DEBIT | REFUND | ADJUSTMENT
+  amount         Decimal   @db.Decimal(12, 2)
+  balanceBefore  Decimal   @db.Decimal(12, 2)
+  balanceAfter   Decimal   @db.Decimal(12, 2)
+  referenceId    String?
+  description    String?
+  createdAt      DateTime  @default(now())
+
+  @@index([customerId])
+  @@index([resellerId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("customer_balance_transactions")
 }

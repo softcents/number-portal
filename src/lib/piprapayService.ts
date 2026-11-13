@@ -60,6 +60,8 @@ export interface CreateCheckoutParams {
   rechargeOrderId?: string;
   numberId?: string;
   walletId?: string;
+  resellerId?: string;
+  paymentType?: "ORDER" | "WALLET_DEPOSIT" | "RECHARGE";
   amount: number;
   currency?: string;
   customerName?: string;
@@ -79,6 +81,8 @@ export async function createCheckoutSession(params: CreateCheckoutParams) {
     rechargeOrderId,
     numberId,
     walletId,
+    resellerId,
+    paymentType,
     amount,
     currency = "BDT",
     customerName,
@@ -97,6 +101,33 @@ export async function createCheckoutSession(params: CreateCheckoutParams) {
   const p = prisma as any;
   const idempotencyKey = crypto.randomUUID();
 
+  // Resolve reseller & custom gateway if customer belongs to a reseller
+  let effectiveResellerId = resellerId || null;
+  let effectiveApiKey = PIPRAPAY_API_KEY;
+  let effectiveBaseUrl = PIPRAPAY_BASE_URL;
+  let isResellerGateway = false;
+
+  const customer = await p.customer.findUnique({
+    where: { id: customerId },
+    include: { reseller: true },
+  });
+
+  if (customer?.reseller) {
+    effectiveResellerId = customer.reseller.id;
+    if (customer.reseller.pgIsActive && customer.reseller.pgApiKey) {
+      effectiveApiKey = customer.reseller.pgApiKey;
+      effectiveBaseUrl = (customer.reseller.pgBaseUrl || PIPRAPAY_BASE_URL).trim();
+      isResellerGateway = true;
+      console.log(
+        `[PipraPay] Using Reseller (${customer.reseller.brandName || customer.reseller.companyName}) personal payment gateway`
+      );
+    }
+  }
+
+  const resolvedPaymentType =
+    paymentType ||
+    (orderId ? "ORDER" : rechargeOrderId ? "RECHARGE" : "WALLET_DEPOSIT");
+
   // 1. Create pending Payment record in PostgreSQL
   const payment = await p.payment.create({
     data: {
@@ -105,7 +136,9 @@ export async function createCheckoutSession(params: CreateCheckoutParams) {
       rechargeOrderId: rechargeOrderId ?? null,
       numberId: numberId ?? null,
       walletId: walletId ?? null,
-      gateway: "PIPRAPAY",
+      resellerId: effectiveResellerId,
+      paymentType: resolvedPaymentType,
+      gateway: isResellerGateway ? "RESELLER_PIPRAPAY" : "PIPRAPAY",
       amount,
       currency,
       status: "PENDING",
@@ -127,11 +160,16 @@ export async function createCheckoutSession(params: CreateCheckoutParams) {
         ? `Checkout for order ${orderId}`
         : rechargeOrderId
         ? `Recharge checkout for ${rechargeOrderId}`
+        : resolvedPaymentType === "WALLET_DEPOSIT"
+        ? "Customer wallet balance auto-deposit"
         : "Wallet recharge checkout",
       ipAddress: ipAddress ?? null,
       metadata: {
-        gateway: "PIPRAPAY",
+        gateway: isResellerGateway ? "RESELLER_PIPRAPAY" : "PIPRAPAY",
         isSandbox: IS_SANDBOX,
+        isResellerGateway,
+        resellerId: effectiveResellerId,
+        paymentType: resolvedPaymentType,
         orderId,
         rechargeOrderId,
       },
@@ -199,6 +237,8 @@ export async function createCheckoutSession(params: CreateCheckoutParams) {
         order_id: orderId || null,
         recharge_order_id: rechargeOrderId || null,
         customer_id: customerId,
+        reseller_id: effectiveResellerId || null,
+        payment_type: resolvedPaymentType,
       }),
       return_url: finalRedirectUrl,
       webhook_url: finalWebhookUrl,
@@ -206,7 +246,9 @@ export async function createCheckoutSession(params: CreateCheckoutParams) {
 
     // Requirement 2: Log request payload with masked PII and never log the API key
     console.log("[PipraPay Checkout Request Payload]:", {
-      endpoint: `${PIPRAPAY_BASE_URL}/checkout/redirect`,
+      endpoint: `${effectiveBaseUrl}/checkout/redirect`,
+      isResellerGateway,
+      resellerId: effectiveResellerId,
       fields: Object.keys(chargePayload),
       amount: chargePayload.amount,
       currency: chargePayload.currency,
@@ -217,13 +259,13 @@ export async function createCheckoutSession(params: CreateCheckoutParams) {
       masked_phone: maskPhone(chargePayload.mobile_number),
     });
 
-    const res = await fetch(`${PIPRAPAY_BASE_URL}/checkout/redirect`, {
+    const res = await fetch(`${effectiveBaseUrl}/checkout/redirect`, {
       method: "POST",
       headers: {
         "accept": "application/json",
         "content-type": "application/json",
-        "MHS-PIPRAPAY-API-KEY": PIPRAPAY_API_KEY,
-        "mh-piprapay-api-key": PIPRAPAY_API_KEY,
+        "MHS-PIPRAPAY-API-KEY": effectiveApiKey,
+        "mh-piprapay-api-key": effectiveApiKey,
       },
       body: JSON.stringify(chargePayload),
       signal: AbortSignal.timeout(15000),
@@ -299,19 +341,54 @@ export async function createCheckoutSession(params: CreateCheckoutParams) {
 }
 
 // ─── 2. Verify Payment with PipraPay using pp_id ──────────────────────────────
-export async function verifyWithPipraPay(ppId: string): Promise<{
+export async function verifyWithPipraPay(
+  ppId: string,
+  customApiKey?: string,
+  customBaseUrl?: string
+): Promise<{
   verified: boolean;
   status?: string;
   rawData?: any;
 }> {
   try {
-    const res = await fetch(`${PIPRAPAY_BASE_URL}/verify-payment`, {
+    let effectiveApiKey = customApiKey;
+    let effectiveBaseUrl = customBaseUrl || PIPRAPAY_BASE_URL;
+
+    // If API key is not supplied, auto-resolve from the payment's reseller
+    if (!effectiveApiKey) {
+      try {
+        const p = prisma as any;
+        const payment = await p.payment.findFirst({
+          where: {
+            OR: [
+              { gatewayPaymentId: ppId },
+              { gatewayTransactionId: ppId },
+            ],
+          },
+          include: {
+            reseller: true,
+          },
+        });
+
+        if (payment?.reseller?.pgIsActive && payment.reseller.pgApiKey) {
+          effectiveApiKey = payment.reseller.pgApiKey;
+          effectiveBaseUrl = (payment.reseller.pgBaseUrl || PIPRAPAY_BASE_URL).trim();
+          console.log(`[PipraPay Verify] Using Reseller (${payment.reseller.brandName || payment.reseller.companyName}) gateway credentials`);
+        } else {
+          effectiveApiKey = PIPRAPAY_API_KEY;
+        }
+      } catch {
+        effectiveApiKey = PIPRAPAY_API_KEY;
+      }
+    }
+
+    const res = await fetch(`${effectiveBaseUrl}/verify-payment`, {
       method: "POST",
       headers: {
         "accept": "application/json",
         "content-type": "application/json",
-        "MHS-PIPRAPAY-API-KEY": PIPRAPAY_API_KEY,
-        "mh-piprapay-api-key": PIPRAPAY_API_KEY,
+        "MHS-PIPRAPAY-API-KEY": effectiveApiKey || PIPRAPAY_API_KEY,
+        "mh-piprapay-api-key": effectiveApiKey || PIPRAPAY_API_KEY,
       },
       body: JSON.stringify({ pp_id: ppId }),
       signal: AbortSignal.timeout(10000),
@@ -461,6 +538,29 @@ export async function processPaymentSuccess(params: {
     }).catch((err) =>
       console.error("[ICC Recharge After Payment Error]", err)
     );
+  }
+
+  // Trigger D: Customer Account Wallet Auto Balance Add
+  if (
+    payment.paymentType === "WALLET_DEPOSIT" ||
+    (!payment.orderId && !payment.walletId && !payment.rechargeOrderId)
+  ) {
+    try {
+      const { creditCustomerBalance } = await import("@/lib/customerBalanceService");
+      await creditCustomerBalance({
+        customerId: payment.customerId,
+        resellerId: payment.resellerId,
+        amount: Number(payment.amount),
+        paymentId: payment.id,
+        referenceId: gatewayTransactionId || ppId || payment.gatewayPaymentId,
+        description: `Auto balance add via ${payment.gateway || "Payment Gateway"}`,
+      });
+      console.log(
+        `[Auto Balance Add] Customer ${payment.customerId} credited +৳${payment.amount}`
+      );
+    } catch (balErr) {
+      console.error("[Auto Balance Add Error]:", balErr);
+    }
   }
 
   return {
@@ -745,16 +845,34 @@ export async function processPaymentFailure(params: {
 // ─── 6. Validate Webhook via mh-piprapay-api-key header ──────────────────────
 /**
  * PipraPay sends the API key in the 'mh-piprapay-api-key' header on every webhook.
- * We validate by comparing the received key to our configured API key.
+ * We validate by comparing the received key to our configured API key or any active reseller's API key.
  */
 export function verifyPipraPayWebhookApiKey(receivedKey: string | null): boolean {
   if (!receivedKey) return false;
-  // Use timing-safe comparison to prevent timing attacks
+  // Use timing-safe comparison to prevent timing attacks for platform API key
   try {
     const a = Buffer.from(receivedKey);
     const b = Buffer.from(PIPRAPAY_API_KEY);
-    if (a.length !== b.length) return false;
-    return crypto.timingSafeEqual(a, b);
+    if (a.length === b.length && crypto.timingSafeEqual(a, b)) return true;
+  } catch {}
+  return false;
+}
+
+export async function verifyPipraPayWebhookApiKeyAsync(
+  receivedKey: string | null
+): Promise<boolean> {
+  if (!receivedKey) return false;
+  if (verifyPipraPayWebhookApiKey(receivedKey)) return true;
+
+  try {
+    const p = prisma as any;
+    const reseller = await p.reseller.findFirst({
+      where: {
+        pgApiKey: receivedKey,
+        pgIsActive: true,
+      },
+    });
+    return !!reseller;
   } catch {
     return false;
   }

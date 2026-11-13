@@ -121,6 +121,59 @@ export default function CustomerPortalPage() {
   const [loadingRecent, setLoadingRecent] = useState(false);
   const [topUpError, setTopUpError] = useState<string>("");
 
+  // ─── Customer Account Balance & Auto Deposit State ─────────────────────────
+  const [customerBalance, setCustomerBalance] = useState<number>(0);
+  const [customerResellerInfo, setCustomerResellerInfo] = useState<any>(null);
+  const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
+  const [depositAmount, setDepositAmount] = useState<string>("500");
+  const [isProcessingDeposit, setIsProcessingDeposit] = useState<boolean>(false);
+  const [depositError, setDepositError] = useState<string>("");
+  const [isPayingWithBalance, setIsPayingWithBalance] = useState<boolean>(false);
+
+  const fetchCustomerBalance = async () => {
+    try {
+      const res = await fetch("/api/portal/balance");
+      if (res.ok) {
+        const data = await res.json();
+        setCustomerBalance(Number(data.balance || 0));
+        if (data.reseller) {
+          setCustomerResellerInfo(data.reseller);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch customer balance:", e);
+    }
+  };
+
+  const handleInitiateDeposit = async () => {
+    const amt = Number(depositAmount);
+    if (isNaN(amt) || amt < 10) {
+      setDepositError("Please enter an amount of at least ৳10 BDT");
+      return;
+    }
+    setIsProcessingDeposit(true);
+    setDepositError("");
+    try {
+      const res = await fetch("/api/portal/balance/deposit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amt }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to initiate deposit checkout");
+      }
+      if (data.paymentUrl) {
+        window.location.href = data.paymentUrl;
+      } else {
+        throw new Error("No payment checkout URL returned");
+      }
+    } catch (err: any) {
+      setDepositError(err.message || "Failed to initiate payment");
+      setIsProcessingDeposit(false);
+    }
+  };
+
   const handleOpenTopUpModal = async (num: MyNumberItem) => {
     const liveBal = iccBalances[num.number];
     const curBal = typeof liveBal === "number" ? liveBal : Number(num.wallet?.balance || 0);
@@ -321,6 +374,34 @@ export default function CustomerPortalPage() {
         const cleanUrl = window.location.pathname;
         window.history.replaceState({}, "", cleanUrl);
       }
+
+      // Check deposit status for Customer Auto Balance Add
+      const depositStatus = params.get("deposit");
+      if (depositStatus === "success" && paymentId) {
+        setBannerMessage("⏳ Verifying your deposit with payment gateway...");
+        const pp_id = params.get("pp_id") || params.get("invoice_id") || "";
+        fetch(`/api/payments/deposit-return?paymentId=${encodeURIComponent(paymentId)}&pp_id=${encodeURIComponent(pp_id)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.success && data.status === "COMPLETED") {
+              setBannerMessage(
+                `🎉 Deposit confirmed! ৳${Number(data.amount || 0).toFixed(2)} added to your balance. Current Balance: ৳${Number(data.balance || 0).toFixed(2)} BDT.`
+              );
+              fetchCustomerBalance();
+            } else {
+              setBannerMessage("ℹ️ Deposit session received. Finalizing balance addition...");
+              fetchCustomerBalance();
+            }
+          })
+          .catch(() => {
+            setBannerMessage("🎉 Deposit received! Updating balance.");
+            fetchCustomerBalance();
+          });
+        window.history.replaceState({}, "", window.location.pathname);
+      } else if (depositStatus === "cancelled") {
+        setBannerMessage("ℹ️ Deposit was cancelled. No amount was deducted.");
+        window.history.replaceState({}, "", window.location.pathname);
+      }
     }
   }, []);
 
@@ -330,6 +411,7 @@ export default function CustomerPortalPage() {
   useEffect(() => {
     fetchUser();
     fetchAvailableNumbers();
+    fetchCustomerBalance();
   }, []);
 
   useEffect(() => {
@@ -525,6 +607,111 @@ export default function CustomerPortalPage() {
     }
     setPurchasingNumber(item);
     setCheckoutError("");
+  };
+
+  // Execute Number Purchase with Account Wallet Balance
+  const handleConfirmOrderByBalance = async () => {
+    if (!purchasingNumber || !user) return;
+    setIsPayingWithBalance(true);
+    setCheckoutError("");
+    try {
+      // 1. Create order
+      const orderRes = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: user.customerId,
+          numberIds: [purchasingNumber.id],
+          notes: `Purchase of ${purchasingNumber.number} via Wallet Balance`,
+          reservationMinutes: 15,
+        }),
+      });
+      const orderData = await orderRes.json();
+      if (!orderRes.ok || !orderData.success) {
+        throw new Error(orderData.error || "Failed to reserve number");
+      }
+      const orderId = orderData.order.id;
+
+      // 2. Pay using customer balance
+      const payRes = await fetch("/api/portal/pay-with-balance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "ORDER", orderId }),
+      });
+      const payData = await payRes.json();
+      if (!payRes.ok || !payData.success) {
+        throw new Error(payData.error || "Failed to pay with balance");
+      }
+
+      await fetchUser();
+      await fetchCustomerBalance();
+      setPurchasingNumber(null);
+      setActiveTab("my-numbers");
+      setBannerMessage("🎉 Number purchased successfully using your account balance!");
+    } catch (err: any) {
+      setCheckoutError(err?.message || "Failed to complete purchase with balance");
+    } finally {
+      setIsPayingWithBalance(false);
+    }
+  };
+
+  // Execute ICC Talk Recharge with Account Wallet Balance
+  const handleConfirmTopUpByBalance = async () => {
+    if (!topUpModal || !user) return;
+    const numAmt = Number(topUpAmount);
+    if (isNaN(numAmt) || numAmt < 1) {
+      setTopUpError("Please enter a valid amount.");
+      return;
+    }
+    if (customerBalance < numAmt) {
+      setTopUpError(`Insufficient balance. Current balance is ৳${customerBalance.toFixed(2)}.`);
+      return;
+    }
+
+    setTopUpStage("Connecting");
+    try {
+      // 1. Create recharge order
+      const recRes = await fetch("/api/payments/recharge-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: topUpModal.phone,
+          numberId: topUpModal.numberId,
+          amount: numAmt,
+        }),
+      });
+      const recData = await recRes.json();
+      const p = recData?.paymentId;
+
+      // 2. Pay using balance
+      const payRes = await fetch("/api/portal/pay-with-balance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "RECHARGE",
+          rechargeOrderId: recData?.rechargeOrderId,
+        }),
+      });
+      const payData = await payRes.json();
+      if (!payRes.ok || !payData.success) {
+        throw new Error(payData.error || "Failed to recharge from balance");
+      }
+
+      setTopUpStage("done");
+      setTopUpResult({
+        amount: numAmt,
+        balanceBefore: topUpModal.currentBalance,
+        balanceAfter: topUpModal.currentBalance + numAmt,
+      });
+      await fetchCustomerBalance();
+      setBannerMessage("🎉 Recharge submitted successfully using your account balance!");
+    } catch (err: any) {
+      setTopUpStage("error");
+      setTopUpResult({
+        reason: err?.message || "Failed to complete recharge from balance",
+        amount: numAmt,
+      });
+    }
   };
 
   // Execute Order Creation & PipraPay Checkout (or free instant claim)
@@ -779,6 +966,45 @@ export default function CustomerPortalPage() {
 
           {user ? (
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              {/* Customer Account Wallet Balance Chip */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "4px 10px",
+                  borderRadius: "8px",
+                  background: "#ecfdf5",
+                  border: "1px solid #a7f3d0",
+                }}
+              >
+                <span style={{ fontSize: "11px", fontWeight: 600, color: "#065f46" }}>Balance:</span>
+                <span style={{ fontSize: "13px", fontWeight: 800, color: "#047857" }}>
+                  ৳ {Number(customerBalance).toFixed(2)}
+                </span>
+                <button
+                  onClick={() => setShowDepositModal(true)}
+                  style={{
+                    marginLeft: "4px",
+                    padding: "3px 8px",
+                    borderRadius: "5px",
+                    background: "#059669",
+                    color: "#ffffff",
+                    border: "none",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "3px",
+                    boxShadow: "0 1px 2px rgba(5, 150, 105, 0.2)",
+                  }}
+                  title="Add Balance / Auto Deposit"
+                >
+                  + Add
+                </button>
+              </div>
+
               <div
                 style={{
                   display: "flex",
@@ -2173,45 +2399,117 @@ export default function CustomerPortalPage() {
               </div>
             )}
 
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                onClick={() => setPurchasingNumber(null)}
-                disabled={isProcessingCheckout}
+            {/* Balance status / options */}
+            {Number(purchasingNumber.salePrice ?? 0) > 0 && (
+              <div
                 style={{
-                  flex: 1,
-                  padding: "10px",
+                  background: "#f0fdf4",
+                  border: "1px solid #bbf7d0",
                   borderRadius: "8px",
-                  background: "var(--bg-beige)",
-                  border: "1px solid var(--border-subtle)",
-                  color: "var(--text-main)",
-                  fontSize: "13px",
-                  cursor: "pointer",
-                  fontWeight: 600,
+                  padding: "10px 12px",
+                  marginBottom: "16px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontSize: "12px",
                 }}
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleConfirmOrder}
-                disabled={isProcessingCheckout}
-                style={{
-                  flex: 2,
-                  padding: "10px",
-                  borderRadius: "8px",
-                  background: "var(--sky-indigo)",
-                  border: "none",
-                  color: "#ffffff",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: isProcessingCheckout ? "not-allowed" : "pointer",
-                  opacity: isProcessingCheckout ? 0.7 : 1,
-                  boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
-                }}
-              >
-                {isProcessingCheckout
-                  ? (Number(purchasingNumber?.salePrice ?? 0) <= 0 ? "Claiming Free Number…" : "Redirecting to PipraPay…")
-                  : (Number(purchasingNumber?.salePrice ?? 0) <= 0 ? "Claim for Free ✓" : "Proceed to PipraPay →")}
-              </button>
+                <div>
+                  <span style={{ color: "#166534" }}>Your Wallet Balance: </span>
+                  <strong style={{ color: "#15803d" }}>৳ {customerBalance.toFixed(2)}</strong>
+                </div>
+                {customerBalance < Number(purchasingNumber.salePrice) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPurchasingNumber(null);
+                      setShowDepositModal(true);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#0284c7",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                      fontSize: "11px",
+                    }}
+                  >
+                    + Add Balance
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              {/* Option 1: Pay with Account Balance (if sufficient) */}
+              {Number(purchasingNumber.salePrice ?? 0) > 0 && customerBalance >= Number(purchasingNumber.salePrice) && (
+                <button
+                  type="button"
+                  onClick={handleConfirmOrderByBalance}
+                  disabled={isPayingWithBalance || isProcessingCheckout}
+                  style={{
+                    width: "100%",
+                    padding: "11px",
+                    borderRadius: "8px",
+                    background: "#059669",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: isPayingWithBalance ? "not-allowed" : "pointer",
+                    boxShadow: "0 2px 6px rgba(5, 150, 105, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                  }}
+                >
+                  <span>⚡</span>
+                  <span>{isPayingWithBalance ? "Processing..." : "Pay with Account Balance (Instant Claim)"}</span>
+                </button>
+              )}
+
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  onClick={() => setPurchasingNumber(null)}
+                  disabled={isProcessingCheckout || isPayingWithBalance}
+                  style={{
+                    flex: 1,
+                    padding: "10px",
+                    borderRadius: "8px",
+                    background: "var(--bg-beige)",
+                    border: "1px solid var(--border-subtle)",
+                    color: "var(--text-main)",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmOrder}
+                  disabled={isProcessingCheckout || isPayingWithBalance}
+                  style={{
+                    flex: 2,
+                    padding: "10px",
+                    borderRadius: "8px",
+                    background: "var(--sky-indigo)",
+                    border: "none",
+                    color: "#ffffff",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: isProcessingCheckout ? "not-allowed" : "pointer",
+                    opacity: isProcessingCheckout ? 0.7 : 1,
+                    boxShadow: "0 2px 8px rgba(2, 132, 199, 0.25)",
+                  }}
+                >
+                  {isProcessingCheckout
+                    ? (Number(purchasingNumber?.salePrice ?? 0) <= 0 ? "Claiming Free Number…" : "Redirecting to Gateway…")
+                    : (Number(purchasingNumber?.salePrice ?? 0) <= 0 ? "Claim for Free ✓" : "Pay via Payment Gateway →")}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2379,46 +2677,75 @@ export default function CustomerPortalPage() {
                 </div>
 
                 {/* Action Buttons */}
-                <div style={{ display: "flex", gap: "10px", marginBottom: "18px" }}>
-                  <button
-                    onClick={() => setTopUpModal(null)}
-                    style={{
-                      flex: 1,
-                      padding: "11px",
-                      borderRadius: "10px",
-                      background: "var(--bg-beige)",
-                      border: "1px solid var(--border-subtle)",
-                      color: "var(--text-main)",
-                      fontSize: "13px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    id="topup-pay-btn"
-                    onClick={handleConfirmTopUp}
-                    style={{
-                      flex: 2,
-                      padding: "11px",
-                      borderRadius: "10px",
-                      background: "var(--sky-indigo)",
-                      border: "none",
-                      color: "#ffffff",
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: "6px",
-                    }}
-                  >
-                    <span>💳</span>
-                    <span>Pay ৳{topUpAmount || "0"} via PipraPay</span>
-                  </button>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "18px" }}>
+                  {/* Account balance quick pay option */}
+                  {customerBalance >= Number(topUpAmount || 0) && Number(topUpAmount || 0) > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleConfirmTopUpByBalance}
+                      style={{
+                        width: "100%",
+                        padding: "11px",
+                        borderRadius: "10px",
+                        background: "#059669",
+                        border: "none",
+                        color: "#ffffff",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: "0 2px 6px rgba(5, 150, 105, 0.3)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span>⚡</span>
+                      <span>Pay ৳{topUpAmount} from Account Balance (Instant)</span>
+                    </button>
+                  )}
+
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button
+                      onClick={() => setTopUpModal(null)}
+                      style={{
+                        flex: 1,
+                        padding: "11px",
+                        borderRadius: "10px",
+                        background: "var(--bg-beige)",
+                        border: "1px solid var(--border-subtle)",
+                        color: "var(--text-main)",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      id="topup-pay-btn"
+                      onClick={handleConfirmTopUp}
+                      style={{
+                        flex: 2,
+                        padding: "11px",
+                        borderRadius: "10px",
+                        background: "var(--sky-indigo)",
+                        border: "none",
+                        color: "#ffffff",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: "0 4px 12px rgba(2, 132, 199, 0.3)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span>💳</span>
+                      <span>Pay ৳{topUpAmount || "0"} via Online Gateway</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Payment notice */}
@@ -2871,6 +3198,304 @@ export default function CustomerPortalPage() {
                 }}
               >
                 {isProcessingRecharge ? "Connecting..." : "Pay via PipraPay"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── CUSTOMER AUTO-DEPOSIT / ADD BALANCE MODAL ─── */}
+      {showDepositModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.55)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: "20px",
+          }}
+        >
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1px solid var(--border-subtle)",
+              borderRadius: "18px",
+              padding: "28px",
+              maxWidth: "460px",
+              width: "100%",
+              boxShadow: "var(--shadow-modal)",
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "10px",
+                    background: "#ecfdf5",
+                    border: "1px solid #a7f3d0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "18px",
+                  }}
+                >
+                  💳
+                </div>
+                <div>
+                  <h3 style={{ fontSize: "18px", fontWeight: 700, margin: 0, color: "var(--text-heading)" }}>
+                    Add Balance / Deposit
+                  </h3>
+                  <div style={{ fontSize: "12px", color: "var(--text-muted)", marginTop: "2px" }}>
+                    Instant auto-credit upon payment confirmation
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowDepositModal(false);
+                  setDepositError("");
+                }}
+                disabled={isProcessingDeposit}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "#94a3b8",
+                  fontSize: "20px",
+                  cursor: "pointer",
+                  padding: "4px",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Current Balance Bar */}
+            <div
+              style={{
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                borderRadius: "10px",
+                padding: "12px 16px",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: "20px",
+              }}
+            >
+              <span style={{ fontSize: "12.5px", color: "#166534", fontWeight: 600 }}>Current Account Balance</span>
+              <span style={{ fontSize: "18px", fontWeight: 800, color: "#15803d" }}>
+                ৳ {customerBalance.toFixed(2)} BDT
+              </span>
+            </div>
+
+            {/* Gateway Information Badge */}
+            <div
+              style={{
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+                borderRadius: "8px",
+                padding: "8px 12px",
+                marginBottom: "16px",
+                fontSize: "12px",
+                color: "#475569",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              <span>🔒</span>
+              <span>
+                {customerResellerInfo?.hasPersonalGateway
+                  ? `Automated Payment Gateway (${customerResellerInfo.name || "Reseller"})`
+                  : "Automated Payment Gateway (PipraPay / epay)"}
+              </span>
+            </div>
+
+            {/* Amount input */}
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "var(--text-heading)", marginBottom: "6px" }}>
+                Deposit Amount (BDT)
+              </label>
+              <div style={{ position: "relative" }}>
+                <span
+                  style={{
+                    position: "absolute",
+                    left: "14px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    fontWeight: 700,
+                    color: "var(--text-muted)",
+                    fontSize: "15px",
+                  }}
+                >
+                  ৳
+                </span>
+                <input
+                  type="number"
+                  min="10"
+                  max="100000"
+                  value={depositAmount}
+                  onChange={(e) => {
+                    setDepositAmount(e.target.value);
+                    setDepositError("");
+                  }}
+                  placeholder="e.g. 500"
+                  style={{
+                    width: "100%",
+                    padding: "11px 14px 11px 36px",
+                    background: "#ffffff",
+                    border: "1px solid var(--border-medium)",
+                    borderRadius: "10px",
+                    fontSize: "16px",
+                    fontWeight: 700,
+                    color: "var(--text-heading)",
+                    outline: "none",
+                  }}
+                />
+              </div>
+              {depositError && (
+                <div style={{ fontSize: "12px", color: "#dc2626", marginTop: "6px" }}>
+                  {depositError}
+                </div>
+              )}
+            </div>
+
+            {/* Quick-Pick Amount Chips */}
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ fontSize: "11px", color: "var(--text-dim)", marginBottom: "6px" }}>Quick Select</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: "6px" }}>
+                {["100", "500", "1000", "2000", "5000"].map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => {
+                      setDepositAmount(amt);
+                      setDepositError("");
+                    }}
+                    style={{
+                      padding: "8px 4px",
+                      borderRadius: "8px",
+                      background: depositAmount === amt ? "var(--sky-indigo)" : "var(--bg-beige)",
+                      color: depositAmount === amt ? "#ffffff" : "var(--text-main)",
+                      border: `1px solid ${depositAmount === amt ? "transparent" : "var(--border-subtle)"}`,
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    ৳{amt}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Supported Payment Channels */}
+            <div
+              style={{
+                background: "#faf5ff",
+                border: "1px solid #e9d5ff",
+                borderRadius: "8px",
+                padding: "10px 14px",
+                marginBottom: "20px",
+                fontSize: "11.5px",
+                color: "#6b21a8",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <span>Supported Methods:</span>
+              <strong style={{ color: "#581c87" }}>bKash • Nagad • Rocket • Cards</strong>
+            </div>
+
+            {/* Manual Payment Section if Reseller has configured manual details */}
+            {customerResellerInfo?.manualPayment &&
+              (customerResellerInfo.manualPayment.bkash ||
+                customerResellerInfo.manualPayment.nagad ||
+                customerResellerInfo.manualPayment.instructions) && (
+                <div
+                  style={{
+                    background: "#fffbeb",
+                    border: "1px solid #fef3c7",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    marginBottom: "20px",
+                    fontSize: "11.5px",
+                    color: "#92400e",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: "4px" }}>
+                    ℹ️ Manual Mobile Banking Numbers:
+                  </div>
+                  {customerResellerInfo.manualPayment.bkash && (
+                    <div>bKash: <strong>{customerResellerInfo.manualPayment.bkash}</strong></div>
+                  )}
+                  {customerResellerInfo.manualPayment.nagad && (
+                    <div>Nagad: <strong>{customerResellerInfo.manualPayment.nagad}</strong></div>
+                  )}
+                  {customerResellerInfo.manualPayment.instructions && (
+                    <div style={{ marginTop: "4px", fontStyle: "italic" }}>
+                      {customerResellerInfo.manualPayment.instructions}
+                    </div>
+                  )}
+                </div>
+              )}
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button
+                type="button"
+                onClick={() => setShowDepositModal(false)}
+                disabled={isProcessingDeposit}
+                style={{
+                  flex: 1,
+                  padding: "11px",
+                  borderRadius: "10px",
+                  background: "var(--bg-beige)",
+                  border: "1px solid var(--border-subtle)",
+                  color: "var(--text-main)",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleInitiateDeposit}
+                disabled={isProcessingDeposit}
+                style={{
+                  flex: 2,
+                  padding: "11px",
+                  borderRadius: "10px",
+                  background: "#059669",
+                  border: "none",
+                  color: "#ffffff",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  cursor: isProcessingDeposit ? "not-allowed" : "pointer",
+                  boxShadow: "0 2px 8px rgba(5, 150, 105, 0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "6px",
+                  opacity: isProcessingDeposit ? 0.7 : 1,
+                }}
+              >
+                {isProcessingDeposit ? (
+                  <span>Connecting to Gateway…</span>
+                ) : (
+                  <span>Proceed to Deposit ৳{depositAmount || "0"} →</span>
+                )}
               </button>
             </div>
           </div>

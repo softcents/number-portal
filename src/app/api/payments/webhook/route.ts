@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   processPaymentSuccess,
   processPaymentFailure,
-  verifyPipraPayWebhookApiKey,
+  verifyPipraPayWebhookApiKeyAsync,
   verifyWithPipraPay,
 } from "@/lib/piprapayService";
 import { prisma } from "@/lib/prisma";
@@ -19,7 +19,8 @@ export async function POST(req: NextRequest) {
       req.headers.get("mh-piprapay-api-key") ||
       req.headers.get("Mh-Piprapay-Api-Key");
 
-    if (!verifyPipraPayWebhookApiKey(receivedApiKey)) {
+    const isAuthorized = await verifyPipraPayWebhookApiKeyAsync(receivedApiKey);
+    if (!isAuthorized) {
       console.warn("[PipraPay Webhook] Invalid API key from IP:", ip);
       return NextResponse.json({ error: "Unauthorized request." }, { status: 401 });
     }
