@@ -134,6 +134,9 @@ model Customer {
   customerType          String    @default("INDIVIDUAL")
   companyName           String?
   companyPosition       String?
+  password              String?
+  resellerId            String?
+  reseller              Reseller? @relation(fields: [resellerId], references: [id], onDelete: SetNull)
   kycVerifiedAt         DateTime?
   isActive              Boolean   @default(true)
   notes                 String?
@@ -143,9 +146,11 @@ model Customer {
   numbers Number[]
   orders  Order[]
   wallets NumberWallet[]
+  rechargeTransactions RechargeTransaction[]
 
   @@index([centralIdentityUserId])
   @@index([email])
+  @@index([resellerId])
   @@map("customers")
 }
 
@@ -162,6 +167,9 @@ model Number {
   callRate             Decimal?       @db.Decimal(10, 4)
   costPrice            Decimal?       @db.Decimal(10, 2)
   salePrice            Decimal?       @db.Decimal(10, 2)
+  resellerPrice        Decimal?       @db.Decimal(10, 2)
+  resellerId           String?
+  reseller             Reseller?      @relation(fields: [resellerId], references: [id], onDelete: SetNull)
   providerId           String?
   provider             Provider?      @relation(fields: [providerId], references: [id])
   providerReferenceId  String?
@@ -178,12 +186,14 @@ model Number {
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
-  statusHistory NumberStatusHistory[]
-  wallet        NumberWallet?
-  orderItems    OrderItem[]
+  statusHistory        NumberStatusHistory[]
+  wallet               NumberWallet?
+  orderItems           OrderItem[]
+  rechargeTransactions RechargeTransaction[]
 
   @@index([status])
   @@index([customerId])
+  @@index([resellerId])
   @@index([providerId])
   @@map("numbers")
 }
@@ -426,4 +436,92 @@ model SystemAuditLog {
   @@index([resource])
   @@index([createdAt])
   @@map("system_audit_logs")
+}
+
+// ─── NUMBER SALE: Recharge Transactions ────────────────────────────────────
+model RechargeTransaction {
+  id             String    @id @default(cuid())
+  userId         String
+  numberId       String
+  phone          String
+  amount         Decimal   @db.Decimal(12, 2)
+  status         String    @default("PENDING") // PENDING | DONE | ERROR | UNCERTAIN
+  reason         String?
+  balanceBefore  Decimal?  @db.Decimal(12, 2)
+  balanceAfter   Decimal?  @db.Decimal(12, 2)
+  idempotencyKey String?   @unique
+  jobId          String?   @unique
+  durationMs     Int?
+  reference      String?
+  resellerId     String?
+  resellerDiscount Decimal? @db.Decimal(12, 2)
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  number   Number    @relation(fields: [numberId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reseller Reseller?  @relation(fields: [resellerId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([numberId])
+  @@index([resellerId])
+  @@index([phone])
+  @@index([status])
+  @@index([createdAt])
+  @@map("recharge_transactions")
+}
+
+// ─── RESELLER SYSTEM: Reseller Management ──────────────────────────────────
+model Reseller {
+  id                      String    @id @default(cuid())
+  username                String    @unique
+  passwordHash            String
+  companyName             String
+  brandName               String
+  logoUrl                 String?
+  subdomain               String?   @unique
+  customDomain            String?   @unique
+  brandColor              String?   @default("#2563eb")
+  email                   String    @unique
+  phoneNumber             String?
+  supportEmail            String?
+  supportPhone            String?
+  balance                 Decimal   @default(0) @db.Decimal(12, 2)
+  currency                String    @default("BDT")
+  numberDiscountPercent   Decimal   @default(0) @db.Decimal(5, 2)
+  rechargeDiscountPercent Decimal   @default(0) @db.Decimal(5, 2)
+  status                  String    @default("ACTIVE")
+  notes                   String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  customers            Customer[]
+  numbers              Number[]
+  transactions         ResellerTransaction[]
+  rechargeTransactions RechargeTransaction[]
+
+  @@index([status])
+  @@index([subdomain])
+  @@index([customDomain])
+  @@map("resellers")
+}
+
+model ResellerTransaction {
+  id             String    @id @default(cuid())
+  resellerId     String
+  reseller       Reseller  @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+  type           String    // DEPOSIT | NUMBER_PURCHASE | RECHARGE | COMMISSION | ADJUSTMENT
+  amount         Decimal   @db.Decimal(12, 2)
+  discountAmount Decimal   @default(0) @db.Decimal(12, 2)
+  netAmount      Decimal   @db.Decimal(12, 2)
+  balanceBefore  Decimal   @db.Decimal(12, 2)
+  balanceAfter   Decimal   @db.Decimal(12, 2)
+  reference      String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+
+  @@index([resellerId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("reseller_transactions")
 }

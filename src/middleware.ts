@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Protect all /admin/* and /api/admin/* routes except login
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow the login page, login API, and impersonate leave through
+  // ─── ADMIN PROTECTION ──────────────────────────────────────────────────
   if (
     pathname === "/admin/login" ||
     pathname === "/api/admin/login" ||
@@ -36,10 +35,46 @@ export function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // ─── RESELLER PROTECTION ────────────────────────────────────────────────
+  if (
+    pathname === "/reseller/login" ||
+    pathname === "/api/reseller/auth/login" ||
+    pathname.startsWith("/api/reseller/branding")
+  ) {
+    return NextResponse.next();
+  }
+
+  // Protect /api/reseller/* API endpoints
+  if (pathname.startsWith("/api/reseller")) {
+    const resellerToken = request.cookies.get("reseller_token");
+    if (!resellerToken || !resellerToken.value) {
+      return NextResponse.json(
+        { error: "Unauthorized: Reseller session required" },
+        { status: 401 }
+      );
+    }
+    return NextResponse.next();
+  }
+
+  // Protect /reseller/* UI routes
+  if (pathname.startsWith("/reseller")) {
+    const resellerToken = request.cookies.get("reseller_token");
+    if (!resellerToken || !resellerToken.value) {
+      const loginUrl = new URL("/reseller/login", request.url);
+      loginUrl.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+    return NextResponse.next();
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/api/admin/:path*",
+    "/reseller/:path*",
+    "/api/reseller/:path*",
+  ],
 };
-

@@ -91,6 +91,14 @@ export default function HomePageCentralLogin() {
               <span>⚡ Provider Register</span>
             </Link>
 
+            <Link
+              href="/reseller/login"
+              className="admin-nav-btn"
+              style={{ background: "#f5f3ff", color: "#6d28d9", borderColor: "#ddd6fe" }}
+            >
+              <span>🏢 Reseller</span>
+            </Link>
+
             <Link href="/admin/login" className="admin-nav-btn" id="admin-panel-btn">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />

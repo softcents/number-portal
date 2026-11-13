@@ -68,6 +68,20 @@ export default function CustomerPortalPage() {
   const [myPayments, setMyPayments] = useState<any[]>([]);
   const [myRecharges, setMyRecharges] = useState<any[]>([]);
   const [paymentViewFilter, setPaymentViewFilter] = useState<"side-by-side" | "purchases" | "recharges">("side-by-side");
+  // White-label branding state
+  const [branding, setBranding] = useState<{
+    isResellerBranded: boolean;
+    brandName: string;
+    companyName: string;
+    logoUrl?: string | null;
+    brandColor?: string;
+    supportEmail?: string | null;
+    supportPhone?: string | null;
+  }>({
+    isResellerBranded: false,
+    brandName: "Number Sale Portal",
+    companyName: "Softcents Ecosystem",
+  });
   // ICC live balances: number string -> balance value
   const [iccBalances, setIccBalances] = useState<Record<string, number | null>>({});
   const [balanceUpdatedTimes, setBalanceUpdatedTimes] = useState<Record<string, string>>({});
@@ -377,6 +391,19 @@ export default function CustomerPortalPage() {
 
   useEffect(() => {
     fetchCatalog();
+    // Resolve dynamic white-label branding
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const resellerId = params.get("resellerId");
+      fetch(`/api/reseller/branding${resellerId ? `?resellerId=${encodeURIComponent(resellerId)}` : ""}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data && data.isResellerBranded) {
+            setBranding(data);
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
@@ -605,22 +632,29 @@ export default function CustomerPortalPage() {
                 width: "32px",
                 height: "32px",
                 borderRadius: "8px",
-                background: "var(--sky-indigo)",
+                background: branding.brandColor || "var(--sky-indigo)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 800,
                 fontSize: "14px",
                 color: "#ffffff",
+                overflow: "hidden",
               }}
             >
-              📱
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt="Logo" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+              ) : (
+                branding.brandName ? branding.brandName.charAt(0).toUpperCase() : "📱"
+              )}
             </div>
             <div>
               <div style={{ fontSize: "14px", fontWeight: 700, letterSpacing: "0.02em", color: "var(--text-heading)" }}>
-                Number Sale Portal
+                {branding.brandName}
               </div>
-              <div style={{ fontSize: "10.5px", color: "var(--text-dim)" }}>Softcents Ecosystem</div>
+              <div style={{ fontSize: "10.5px", color: "var(--text-dim)" }}>
+                {branding.isResellerBranded ? (branding.supportPhone || branding.companyName) : "Softcents Ecosystem"}
+              </div>
             </div>
           </div>
 
