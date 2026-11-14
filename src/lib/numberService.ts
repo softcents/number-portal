@@ -177,6 +177,7 @@ export async function createNumber(data: {
 export async function getNumbers(filter?: {
   status?: string;
   providerId?: string;
+  resellerId?: string;
   query?: string;
   page?: number;
   pageSize?: number;
@@ -190,13 +191,26 @@ export async function getNumbers(filter?: {
   if (filter?.providerId && filter.providerId !== "ALL") {
     where.providerId = filter.providerId;
   }
+  if (filter?.resellerId) {
+    // If resellerId is specified, prioritize numbers assigned to this reseller
+    where.OR = [
+      { resellerId: filter.resellerId },
+      { resellerId: null },
+    ];
+  }
   if (filter?.query?.trim()) {
     const q = filter.query.trim();
-    where.OR = [
+    const queryConditions = [
       { number: { contains: q } },
       { normalizedNumber: { contains: q } },
       { city: { contains: q, mode: "insensitive" } },
     ];
+    if (where.OR) {
+      where.AND = [{ OR: where.OR }, { OR: queryConditions }];
+      delete where.OR;
+    } else {
+      where.OR = queryConditions;
+    }
   }
 
   const page = filter?.page ?? 1;
@@ -211,6 +225,14 @@ export async function getNumbers(filter?: {
         provider: { select: { id: true, code: true, name: true } },
         displayCompany: { select: { id: true, code: true, name: true } },
         customer: { select: { id: true, fullName: true, email: true } },
+        reseller: {
+          select: {
+            id: true,
+            brandName: true,
+            defaultNumberPricingMode: true,
+            defaultNumberPrice: true,
+          },
+        },
       },
       orderBy: { createdAt: "desc" },
       skip,

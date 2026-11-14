@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getResellerSession } from "@/lib/resellerAuth";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
+import { resolveCustomerNumberPrice } from "@/lib/numberPricingService";
 
 // GET /api/reseller/numbers?mode=my|pool
 export async function GET(req: NextRequest) {
@@ -80,18 +81,35 @@ export async function GET(req: NextRequest) {
       ];
     }
 
-    const numbers = await p.number.findMany({
-      where,
-      include: {
-        customer: { select: { id: true, fullName: true, email: true, phoneNumber: true } },
-        provider: { select: { id: true, name: true, code: true } },
-        displayCompany: { select: { id: true, name: true, code: true } },
-        wallet: true,
-      },
-      orderBy: { updatedAt: "desc" },
+    const [numbers, reseller] = await Promise.all([
+      p.number.findMany({
+        where,
+        include: {
+          customer: { select: { id: true, fullName: true, email: true, phoneNumber: true } },
+          provider: { select: { id: true, name: true, code: true } },
+          displayCompany: { select: { id: true, name: true, code: true } },
+          wallet: true,
+        },
+        orderBy: { updatedAt: "desc" },
+      }),
+      p.reseller.findUnique({
+        where: { id: session.resellerId },
+        select: { defaultNumberPricingMode: true, defaultNumberPrice: true },
+      }),
+    ]);
+
+    const enrichedNumbers = numbers.map((n: any) => {
+      const resolved = resolveCustomerNumberPrice(n, reseller);
+      return {
+        ...n,
+        adminBaseRate: Number(n.salePrice || 0),
+        effectiveCustomerPrice: resolved.price,
+        isCustomerFree: resolved.isFree,
+        isCustomPriceSet: resolved.isCustom,
+      };
     });
 
-    return NextResponse.json({ success: true, numbers });
+    return NextResponse.json({ success: true, numbers: enrichedNumbers });
   } catch (error: any) {
     console.error("[Reseller Numbers GET Error]:", error);
     return NextResponse.json({ error: error?.message || "Failed to fetch numbers" }, { status: 500 });
@@ -107,7 +125,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { numberId, customerId } = body;
+    const { numberId, customerId, resellerSalePrice, isFreeForCustomer } = body;
 
     if (!numberId) {
       return NextResponse.json({ error: "Number ID is required" }, { status: 400 });
@@ -193,11 +211,16 @@ export async function POST(req: NextRequest) {
       });
 
       // 6. Update Number
+      const isFree = Boolean(isFreeForCustomer);
+      const customPrice = isFree ? 0 : (resellerSalePrice !== undefined && resellerSalePrice !== null && resellerSalePrice !== "" ? Number(resellerSalePrice) : null);
+
       const updatedNumber = await tx.number.update({
         where: { id: num.id },
         data: {
           resellerId: reseller.id,
           resellerPrice: wholesalePrice,
+          resellerSalePrice: customPrice,
+          isFreeForCustomer: isFree,
           customerId: targetCustomer ? targetCustomer.id : null,
           status: targetCustomer ? "ASSIGNED" : "AVAILABLE",
           notes: `Purchased by Reseller ${reseller.companyName} at wholesale discount`,

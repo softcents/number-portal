@@ -38,6 +38,8 @@ export async function GET(req: NextRequest) {
         currency: reseller.currency,
         numberDiscountPercent: Number(reseller.numberDiscountPercent || 0),
         rechargeDiscountPercent: Number(reseller.rechargeDiscountPercent || 0),
+        defaultNumberPricingMode: reseller.defaultNumberPricingMode || "CUSTOM",
+        defaultNumberPrice: reseller.defaultNumberPrice !== null ? Number(reseller.defaultNumberPrice) : null,
         status: reseller.status,
       },
     });
@@ -64,6 +66,8 @@ export async function PUT(req: NextRequest) {
       customDomain,
       supportEmail,
       supportPhone,
+      defaultNumberPricingMode,
+      defaultNumberPrice,
       currentPassword,
       newPassword,
     } = body;
@@ -84,6 +88,13 @@ export async function PUT(req: NextRequest) {
     if (brandColor !== undefined) updateData.brandColor = brandColor?.trim() || "#2563eb";
     if (supportEmail !== undefined) updateData.supportEmail = supportEmail?.trim() || null;
     if (supportPhone !== undefined) updateData.supportPhone = supportPhone?.trim() || null;
+
+    if (defaultNumberPricingMode !== undefined) {
+      updateData.defaultNumberPricingMode = defaultNumberPricingMode;
+    }
+    if (defaultNumberPrice !== undefined) {
+      updateData.defaultNumberPrice = defaultNumberPrice !== null ? Number(defaultNumberPrice) : null;
+    }
 
     // Check subdomain uniqueness if changing
     if (subdomain !== undefined) {

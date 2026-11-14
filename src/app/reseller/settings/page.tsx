@@ -18,6 +18,8 @@ export default function ResellerSettingsPage() {
     customDomain: "",
     supportEmail: "",
     supportPhone: "",
+    defaultNumberPricingMode: "CUSTOM",
+    defaultNumberPrice: "",
     currentPassword: "",
     newPassword: "",
   });
@@ -40,6 +42,8 @@ export default function ResellerSettingsPage() {
             customDomain: r.customDomain || "",
             supportEmail: r.supportEmail || "",
             supportPhone: r.supportPhone || "",
+            defaultNumberPricingMode: r.defaultNumberPricingMode || "CUSTOM",
+            defaultNumberPrice: r.defaultNumberPrice !== null ? String(r.defaultNumberPrice) : "",
             currentPassword: "",
             newPassword: "",
           });
@@ -209,6 +213,136 @@ export default function ResellerSettingsPage() {
                     Point a CNAME record to <code>number-portal.softcents.com</code> in your domain DNS manager.
                   </div>
                 </div>
+              </div>
+
+              {/* Subscriber Number Pricing Policy */}
+              <div style={{ background: "#f8fafc", padding: "16px", borderRadius: "10px", border: "1px solid #e2e8f0", marginBottom: "16px" }}>
+                <h4 style={{ fontSize: "13px", fontWeight: 700, color: "#1e293b", marginBottom: "4px" }}>
+                  🏷️ Default Subscriber Number Pricing Policy
+                </h4>
+                <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 12px 0" }}>
+                  Control whether your subscribers get numbers for <strong>FREE (৳0.00)</strong> or pay your custom rate, regardless of Admin rates.
+                </p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "12px" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "10px",
+                      borderRadius: "6px",
+                      border: `1.5px solid ${form.defaultNumberPricingMode === "CUSTOM" ? "#0284c7" : "#e2e8f0"}`,
+                      background: form.defaultNumberPricingMode === "CUSTOM" ? "#f0f9ff" : "#ffffff",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="pricingPolicy"
+                      checked={form.defaultNumberPricingMode === "CUSTOM"}
+                      onChange={() => setForm({ ...form, defaultNumberPricingMode: "CUSTOM" })}
+                    />
+                    <div>
+                      <strong style={{ color: "#0f172a" }}>Per-Number Custom Pricing</strong>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>Control price or free per number</div>
+                    </div>
+                  </label>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "10px",
+                      borderRadius: "6px",
+                      border: `1.5px solid ${form.defaultNumberPricingMode === "FREE_ALL" ? "#10b981" : "#e2e8f0"}`,
+                      background: form.defaultNumberPricingMode === "FREE_ALL" ? "#f0fdf4" : "#ffffff",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="pricingPolicy"
+                      checked={form.defaultNumberPricingMode === "FREE_ALL"}
+                      onChange={() => setForm({ ...form, defaultNumberPricingMode: "FREE_ALL" })}
+                    />
+                    <div>
+                      <strong style={{ color: "#166534" }}>Make ALL Numbers FREE (৳0.00)</strong>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>Instant free claim for subscribers</div>
+                    </div>
+                  </label>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "10px",
+                      borderRadius: "6px",
+                      border: `1.5px solid ${form.defaultNumberPricingMode === "FIXED_PRICE" ? "#0284c7" : "#e2e8f0"}`,
+                      background: form.defaultNumberPricingMode === "FIXED_PRICE" ? "#f0f9ff" : "#ffffff",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="pricingPolicy"
+                      checked={form.defaultNumberPricingMode === "FIXED_PRICE"}
+                      onChange={() => setForm({ ...form, defaultNumberPricingMode: "FIXED_PRICE" })}
+                    />
+                    <div>
+                      <strong style={{ color: "#0369a1" }}>Fixed Custom Price for ALL</strong>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>Charge uniform price across portal</div>
+                    </div>
+                  </label>
+
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "10px",
+                      borderRadius: "6px",
+                      border: `1.5px solid ${form.defaultNumberPricingMode === "ADMIN_RATE" ? "#0284c7" : "#e2e8f0"}`,
+                      background: form.defaultNumberPricingMode === "ADMIN_RATE" ? "#f0f9ff" : "#ffffff",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="pricingPolicy"
+                      checked={form.defaultNumberPricingMode === "ADMIN_RATE"}
+                      onChange={() => setForm({ ...form, defaultNumberPricingMode: "ADMIN_RATE" })}
+                    />
+                    <div>
+                      <strong style={{ color: "#475569" }}>Admin Standard Base Rate</strong>
+                      <div style={{ fontSize: "11px", color: "#64748b" }}>Default to Admin catalog rates</div>
+                    </div>
+                  </label>
+                </div>
+
+                {form.defaultNumberPricingMode === "FIXED_PRICE" && (
+                  <div style={{ maxWidth: "260px" }}>
+                    <label style={{ display: "block", fontSize: "12px", fontWeight: 600, color: "#475569", marginBottom: "4px" }}>
+                      Fixed Selling Price (BDT)
+                    </label>
+                    <div style={{ position: "relative" }}>
+                      <span style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", fontWeight: 700, color: "#64748b" }}>৳</span>
+                      <input
+                        type="number"
+                        placeholder="e.g. 150"
+                        value={form.defaultNumberPrice}
+                        onChange={(e) => setForm({ ...form, defaultNumberPrice: e.target.value })}
+                        style={{ width: "100%", padding: "8px 12px 8px 28px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "14px", fontWeight: 700 }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Support Contacts */}

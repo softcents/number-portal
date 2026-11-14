@@ -40,7 +40,15 @@ export async function createOrder(params: CreateOrderParams) {
     // 1. Verify customer exists and is active
     const customer = await tx.customer.findUnique({
       where: { id: customerId },
-      select: { id: true, fullName: true, email: true, isActive: true },
+      include: {
+        reseller: {
+          select: {
+            id: true,
+            defaultNumberPricingMode: true,
+            defaultNumberPrice: true,
+          },
+        },
+      },
     });
 
     if (!customer) throw new Error("Customer not found");
@@ -54,6 +62,15 @@ export async function createOrder(params: CreateOrderParams) {
         number: true,
         status: true,
         salePrice: true,
+        resellerSalePrice: true,
+        isFreeForCustomer: true,
+        resellerId: true,
+        reseller: {
+          select: {
+            defaultNumberPricingMode: true,
+            defaultNumberPrice: true,
+          },
+        },
         displayCompanyId: true,
       },
     });
@@ -73,11 +90,15 @@ export async function createOrder(params: CreateOrderParams) {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + reservationMinutes * 60 * 1000);
 
-    // Calculate total amount
+    // Calculate effective total amount using Reseller Free/Custom Price rule
+    const { resolveCustomerNumberPrice } = await import("@/lib/numberPricingService");
     let totalAmount = 0;
+    const resolvedPriceMap = new Map<string, number>();
+
     for (const num of numbers) {
-      const price = num.salePrice ? Number(num.salePrice) : 0;
-      totalAmount += price;
+      const resolved = resolveCustomerNumberPrice(num, customer?.reseller);
+      resolvedPriceMap.set(num.id, resolved.price);
+      totalAmount += resolved.price;
     }
 
     const orderNumber = generateOrderNumber();
@@ -97,7 +118,7 @@ export async function createOrder(params: CreateOrderParams) {
 
     // 4. Create OrderItems & Reserve Numbers atomically
     for (const num of numbers) {
-      const price = num.salePrice ? Number(num.salePrice) : 0;
+      const price = resolvedPriceMap.get(num.id) ?? (num.salePrice ? Number(num.salePrice) : 0);
 
       await tx.orderItem.create({
         data: {

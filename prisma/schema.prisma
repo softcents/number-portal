@@ -170,6 +170,8 @@ model Number {
   costPrice            Decimal?       @db.Decimal(10, 2)
   salePrice            Decimal?       @db.Decimal(10, 2)
   resellerPrice        Decimal?       @db.Decimal(10, 2)
+  resellerSalePrice    Decimal?       @db.Decimal(10, 2)
+  isFreeForCustomer    Boolean        @default(false)
   resellerId           String?
   reseller             Reseller?      @relation(fields: [resellerId], references: [id], onDelete: SetNull)
   providerId           String?
@@ -510,6 +512,10 @@ model Reseller {
   manualBkashNumber          String?
   manualNagadNumber          String?
   manualRocketNumber         String?
+
+  // Customer Pricing Control (Free or Custom Charge regardless of Admin Rate)
+  defaultNumberPricingMode   String    @default("CUSTOM") // CUSTOM | FREE_ALL | FIXED_PRICE | ADMIN_RATE
+  defaultNumberPrice         Decimal?  @db.Decimal(10, 2)
 
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
